@@ -1,12 +1,13 @@
 ﻿#!/usr/bin/env python3
 """
-Trade Executor Service - WITH AUTHENTICATION
+Trade Executor Service - WITH AUTHENTICATION + PIPELINE
 """
 import os
 import asyncio
 import json
 import logging
 import functools
+import requests
 from datetime import datetime, timezone
 from flask import Flask, request, jsonify
 
@@ -19,6 +20,17 @@ executed_trades = []
 
 # API KEY AUTH
 API_KEY = os.environ.get("API_KEY", "echoforge-trade-2026")
+
+# Pipeline endpoints
+BALANCE_MONITOR_URL = os.environ.get("BALANCE_MONITOR_URL", "https://balance-monitor.onrender.com")
+
+def notify_balance_monitor(trade: dict):
+    """Notify balance monitor after trade execution"""
+    try:
+        requests.post(f"{BALANCE_MONITOR_URL}/trade-alert", json=trade, timeout=5)
+        log.info(f"Notified balance monitor")
+    except Exception as e:
+        log.warning(f"Failed to notify balance monitor: {e}")
 
 def require_auth(f):
     @functools.wraps(f)
@@ -48,8 +60,12 @@ def execute_trade():
     data = request.json
     log.info(f"Execute request: {json.dumps(data)}")
     # Simulation for now - real executor needs PRIVATE_KEY
-    result = {"status": "simulated", "action": data.get("action"), "chain": data.get("chain"), "amount": data.get("amount")}
+    result = {"status": "simulated", "action": data.get("action"), "chain": data.get("chain"), "amount": data.get("amount"), "timestamp": datetime.now(timezone.utc).isoformat()}
     executed_trades.append(result)
+    
+    # PIPELINE: Notify Balance Monitor
+    notify_balance_monitor(result)
+    
     return jsonify(result)
 
 @app.route('/queue', methods=['GET'])
